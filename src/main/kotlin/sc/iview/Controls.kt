@@ -184,6 +184,9 @@ open class Controls(val sciview: SciView) {
         h.addKeyBinding("node: move selected one closer or further away", "ctrl scroll")
         h.addBehaviour("node: rotate selected one", NodeRotateControl(sciview))
         h.addKeyBinding("node: rotate selected one", "ctrl shift button1")
+        h.addBehaviour("node: delete selected one", ClickBehaviour { _, _ -> sciview.deleteActiveNode(true) })
+        h.addKeyBinding("node: delete selected one", "DELETE")
+
 
         // within-scene navigation: ArcBall and FPS
         enableArcBallControl()
@@ -224,7 +227,7 @@ open class Controls(val sciview: SciView) {
         h.addBehaviour("ruler: keep the button pressed and drag with the mouse", ruler)
         h.addKeyBinding("ruler: keep the button pressed and drag with the mouse", "E")
 
-        val configFile = File(System.getProperty("user.home")).resolve(".sciview.keybindings.yaml")
+        val configFile = File(sciview.getProjectDirectories().configDir, ".keybindings.yaml")
         if( configFile.exists() )
             inputHandler.readFromFile(configFile)
         else

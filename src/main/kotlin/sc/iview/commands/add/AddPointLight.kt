@@ -26,41 +26,33 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package sc.iview.commands.edit;
+package sc.iview.commands.add
 
-import static sc.iview.commands.MenuWeights.EDIT;
-import static sc.iview.commands.MenuWeights.EDIT_DELETE_OBJECT;
-
-import org.scijava.command.Command;
-import org.scijava.plugin.Menu;
-import org.scijava.plugin.Parameter;
-import org.scijava.plugin.Plugin;
-
-import sc.iview.SciView;
+import org.scijava.command.Command
+import org.scijava.plugin.Menu
+import org.scijava.plugin.Parameter
+import org.scijava.plugin.Plugin
+import sc.iview.SciView
+import sc.iview.commands.MenuWeights.ADD
+import sc.iview.commands.MenuWeights.EDIT_ADD_POINTLIGHT
 
 /**
- * Command to delete the currently active Node from the scene
+ * Command to add a point light to the scene
  *
  * @author Kyle Harrington
- *
  */
-@Plugin(type = Command.class, menuRoot = "SciView", //
-        menu = { @Menu(label = "Edit", weight = EDIT), //
-                 @Menu(label = "Delete Object", weight = EDIT_DELETE_OBJECT) })
-public class DeleteObject implements Command {
-
+@Plugin(
+    type = Command::class,
+    menuRoot = "SciView",
+    menu = [Menu(label = "Add", weight = ADD), Menu(
+        label = "Point Light",
+        weight = EDIT_ADD_POINTLIGHT
+    )]
+)
+class AddPointLight : Command {
     @Parameter
-    private SciView sciView;
-
-// TODO it would be good if this could continue to use active node but also use an @Parameter by using a callback or sth
-//    @Parameter
-//    private Node node;
-
-    @Override
-    public void run() {
-        if( sciView.getActiveNode() != null ) {
-            sciView.deleteActiveNode(false);
-        }
+    private val sciView: SciView? = null
+    override fun run() {
+        sciView!!.addPointLight()
     }
-
 }

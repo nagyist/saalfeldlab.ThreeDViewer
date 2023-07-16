@@ -26,59 +26,44 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package sc.iview.commands.edit.add
+package sc.iview.commands.add
 
-import graphics.scenery.Box
-import graphics.scenery.volumes.SlicingPlane
-import graphics.scenery.volumes.VolumeManager
 import org.joml.Vector3f
 import org.scijava.command.Command
-import org.scijava.display.DisplayService
 import org.scijava.plugin.Menu
 import org.scijava.plugin.Parameter
 import org.scijava.plugin.Plugin
-import org.scijava.util.ColorRGB
 import sc.iview.SciView
-import sc.iview.commands.MenuWeights.EDIT
-import sc.iview.commands.MenuWeights.EDIT_ADD
-import sc.iview.commands.MenuWeights.EDIT_ADD_BOX
-import sc.iview.commands.MenuWeights.EDIT_ADD_SLICING_PLANE
+import sc.iview.commands.MenuWeights
+import sc.iview.commands.MenuWeights.EDIT_ADD_SPHERE
 
 /**
- * Command to add a box to the scene
+ * Command to add a sphere in the scene
  *
  * @author Kyle Harrington
  */
 @Plugin(
     type = Command::class,
     menuRoot = "SciView",
-    menu = [Menu(label = "Edit", weight = EDIT), Menu(label = "Add", weight = EDIT_ADD), Menu(
-        label = "Slicing Plane...",
-        weight = EDIT_ADD_SLICING_PLANE
+    menu = [Menu(label = "Add", weight = MenuWeights.ADD), Menu(
+        label = "Sphere...",
+        weight = EDIT_ADD_SPHERE
     )]
 )
-class AddSlicingPlane : Command {
-    @Parameter
-    private lateinit var displayService: DisplayService
-
+class AddSphere : Command {
     @Parameter
     private lateinit var sciView: SciView
 
+    //    @Parameter
+    //    private String position = "0; 0; 0";
     @Parameter
-    private var targetAllVolumes = true
+    private val radius = 1.0f
 
+    @Parameter(required = false)
+    private val color = SciView.DEFAULT_COLOR
     override fun run() {
-
-        val plane = SlicingPlane()
-
-        if (targetAllVolumes){
-            sciView.hub.get<VolumeManager>()?.nodes?.forEach { plane.addTargetVolume(it) }
-        }
-
-        val handle = Box(Vector3f(1f,0.1f,1f))
-        handle.name = "Slicing Plane Handle"
-        handle.addChild(plane)
-
-        sciView.addNode(handle)
+        //final Vector3 pos = ClearGLVector3.parse( position );
+        val pos = Vector3f(0.0f)
+        sciView.addSphere(pos, radius, color)
     }
 }

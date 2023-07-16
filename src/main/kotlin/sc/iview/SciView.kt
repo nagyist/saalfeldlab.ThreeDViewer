@@ -37,10 +37,11 @@ import bdv.util.RandomAccessibleIntervalSource4D
 import bdv.util.volatiles.VolatileView
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
+import bvv.core.VolumeViewerOptions
+import dev.dirs.ProjectDirectories
 import graphics.scenery.*
 import graphics.scenery.Scene.RaycastResult
 import graphics.scenery.backends.Renderer
-import graphics.scenery.backends.opengl.OpenGLRenderer
 import graphics.scenery.backends.vulkan.VulkanRenderer
 import graphics.scenery.controls.InputHandler
 import graphics.scenery.controls.OpenVRHMD
@@ -109,9 +110,9 @@ import sc.iview.ui.CustomPropertyUI
 import sc.iview.ui.MainWindow
 import sc.iview.ui.SwingMainWindow
 import sc.iview.ui.TaskManager
-import tpietzsch.example2.VolumeViewerOptions
 import java.awt.event.WindowListener
 import java.io.IOException
+import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.FloatBuffer
 import java.time.LocalDate
@@ -124,6 +125,8 @@ import java.util.function.Predicate
 import java.util.stream.Collectors
 import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
+import kotlin.collections.LinkedHashMap
+import javax.swing.JOptionPane
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -135,6 +138,7 @@ import kotlin.math.sin
 // we suppress unused warnings here because @Parameter-annotated fields
 // get updated automatically by SciJava.
 class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
+
     val sceneryPanel = arrayOf<SceneryPanel?>(null)
 
     /*
@@ -216,6 +220,11 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
      *//*
      * Set the SciJava Display
      */  var display: Display<*>? = null
+
+    /**
+     * List of available LUTs for caching
+     */
+    private var availableLUTs = LinkedHashMap<String, URL>()
 
     /**
      * Return the current SceneryJPanel. This is necessary for custom context menus
@@ -378,10 +387,9 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
                 versionString = versionString.substring(0, 5)
                 val launcherVersion = Version(versionString)
                 val nonWorkingVersion = Version("4.0.5")
-                if (launcherVersion.compareTo(nonWorkingVersion) <= 0
+                if (launcherVersion <= nonWorkingVersion
                         && !java.lang.Boolean.parseBoolean(System.getProperty("sciview.DisableLauncherVersionCheck", "false"))) {
-                    logger.info("imagej-launcher version smaller or equal to non-working version ($versionString vs. 4.0.5), disabling Vulkan as rendering backend. Disable check by setting 'scenery.DisableLauncherVersionCheck' system property to 'true'.")
-                    System.setProperty("scenery.Renderer", "OpenGLRenderer")
+                    throw IllegalStateException("imagej-launcher version is outdated, please update your Fiji installation.")
                 } else {
                     logger.info("imagej-launcher version bigger that non-working version ($versionString vs. 4.0.5), all good.")
                 }
@@ -644,10 +652,14 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
      * @param num_segments number of segments to represent the cylinder
      * @return  the Node corresponding to the cylinder
      */
-    @JvmOverloads
-    fun addCylinder(position: Vector3f, radius: Float, height: Float, num_segments: Int, block: Cylinder.() -> Unit = {}): Cylinder {
+    fun addCylinder(position: Vector3f, radius: Float, height: Float, color: ColorRGB = DEFAULT_COLOR, num_segments: Int, block: Cylinder.() -> Unit = {}): Cylinder {
         val cyl = Cylinder(radius, height, num_segments)
         cyl.spatial().position = position
+        cyl.material {
+            ambient = Vector3f(1.0f, 0.0f, 0.0f)
+            diffuse = Utils.convertToVector3f(color)
+            specular = Vector3f(1.0f, 1.0f, 1.0f)
+        }
         cyl.name = generateUniqueName("Cylinder")
         return addNode(cyl, block = block)
     }
@@ -660,10 +672,14 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
      * @param num_segments number of segments used to represent cone
      * @return  the Node corresponding to the cone
      */
-    @JvmOverloads
-    fun addCone(position: Vector3f, radius: Float, height: Float, num_segments: Int, block: Cone.() -> Unit = {}): Cone {
+    fun addCone(position: Vector3f, radius: Float, height: Float, color: ColorRGB = DEFAULT_COLOR, num_segments: Int, block: Cone.() -> Unit = {}): Cone {
         val cone = Cone(radius, height, num_segments, Vector3f(0.0f, 0.0f, 1.0f))
         cone.spatial().position = position
+        cone.material {
+            ambient = Vector3f(1.0f, 0.0f, 0.0f)
+            diffuse = Utils.convertToVector3f(color)
+            specular = Vector3f(1.0f, 1.0f, 1.0f)
+        }
         cone.name = generateUniqueName("Cone")
         return addNode(cone, block = block)
     }
@@ -853,9 +869,11 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
     }
 
     /**
-     * Add Node n to the scene and set it as the active node/publish it to the event service if activePublish is true
+     * Add Node n to the scene and set it as the active node/publish it to the event service if activePublish is true.
      * @param n node to add to scene
      * @param activePublish flag to specify whether the node becomes active *and* is published in the inspector/services
+     * @param block an optional code that will be executed as a part of adding the node
+     * @param parent optional name of the parent node, default is the scene root
      * @return a Node corresponding to the Node
      */
     @JvmOverloads
@@ -883,6 +901,19 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
     }
 
     /**
+     * Add Node n to the scene and set it as the active node/publish it to the event service if activePublish is true.
+     * This is technically only a shortcut method (to the same named method) that has left out the 'block' parameter.
+     * @param n node to add to scene
+     * @param activePublish flag to specify whether the node becomes active *and* is published in the inspector/services
+     * @param parent name of the parent node
+     * @return a Node corresponding to the Node
+     */
+    @JvmOverloads
+    fun <N: Node?> addNode(n: N, activePublish: Boolean = true, parent: Node): N {
+        return addNode(n, activePublish, {}, parent)
+    }
+
+    /**
      * Make a node known to the services.
      * Used for nodes that are not created/added by a SciView controlled process e.g. [BoundingGrid].
      *
@@ -892,6 +923,7 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
         n.let {
             objectService.addObject(n)
             eventService.publish(NodeAddedEvent(n))
+            (mainWindow as SwingMainWindow).nodePropertyEditor.updateProperties(n, rebuild = true)
         }
         return n
     }
@@ -949,6 +981,7 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
      * Remove a Mesh from the scene
      * @param scMesh mesh to remove from scene
      */
+    @Deprecated("Please use SciView.deleteNode() instead.", replaceWith = ReplaceWith("SciView.deleteNode()"))
     fun removeMesh(scMesh: graphics.scenery.Mesh?) {
         scene.removeChild(scMesh!!)
     }
@@ -1122,7 +1155,18 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
     /**
      * Delete the current active node
      */
-    fun deleteActiveNode() {
+    fun deleteActiveNode(askUser: Boolean = false) {
+        if(askUser && activeNode != null){
+            val options = arrayOf("Cancel", "Delete ${activeNode!!.name}")
+            val x = JOptionPane.showOptionDialog(
+                null, "Please confirm delete of ${activeNode!!.name}? ",
+                "Delete confirm",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, options, options[1]
+            )
+            if (x == 0){
+                return
+            }
+        }
         deleteNode(activeNode)
     }
 
@@ -1132,7 +1176,7 @@ class SciView : SceneryBase, CalibratedRealInterval<CalibratedAxis> {
      * @param activePublish whether the deletion should be published
      */
     @JvmOverloads
-fun deleteNode(node: Node?, activePublish: Boolean = true) {
+    fun deleteNode(node: Node?, activePublish: Boolean = true) {
         if(node is Volume) {
             node.volumeManager.remove(node)
             val toRemove = ArrayList<Any>()
@@ -1166,7 +1210,7 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
     fun dispose() {
         val objs: List<Node> = objectService.getObjects(Node::class.java)
         for (obj in objs) {
-            objectService.removeObject(obj)
+            deleteNode(obj, activePublish = false)
         }
         scijavaContext!!.service(SciViewService::class.java).close(this)
         close()
@@ -1206,9 +1250,11 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
     }
 
     /**
+     * [Deprecated: use addNode]
      * Add a child to the scene. you probably want addNode
      * @param node node to add as a child to the scene
      */
+    @Deprecated("Please use SciView.addNode() instead.", replaceWith = ReplaceWith("SciView.addNode()"))
     fun addChild(node: Node) {
         scene.addChild(node)
     }
@@ -1220,6 +1266,7 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
      */
     fun setColormap(n: Node, lutName: String) {
         try {
+            n.metadata["sciview.colormapName"] = lutName
             setColormap(n, lutService.loadLUT(lutService.findLUTs()[lutName]))
         } catch (e: IOException) {
             e.printStackTrace()
@@ -1298,6 +1345,30 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
     }
 
     /**
+     * Returns the Dataset's scale/resolution converted to sciview units
+     *
+     * @param image the [Dataset]
+     * @return A [FloatArray] representing the image's 3D scale in sciview space
+     */
+    fun getSciviewScale(image: Dataset): FloatArray {
+        val voxelDims = FloatArray(3)
+        var axisNames = arrayOf("X", "Y", "Z")
+        for (axisIdx in voxelDims.indices) {
+            var d = (0 until image.numDimensions()).filter { idx -> image.axis(idx).type().label == axisNames[axisIdx] }.first()
+            val inValue = image.axis(d).averageScale(0.0, 1.0)
+            if (image.axis(d).unit() == null || d >= axes.size) {
+                voxelDims[axisIdx] = inValue.toFloat()
+            } else {
+                val imageAxisUnit = image.axis(d).unit().replace("µ", "u")
+                val sciviewAxisUnit = axis(axisIdx)!!.unit().replace("µ", "u")
+
+                voxelDims[axisIdx] = unitService.value(inValue, imageAxisUnit, sciviewAxisUnit).toFloat()
+            }
+        }
+        return voxelDims
+    }
+
+    /**
      * Adds a [Dataset]-backed [Volume] to the scene.
      *
      * @param image The [Dataset] to add.
@@ -1313,18 +1384,7 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
         block: Volume.() -> Unit = {}
     ): Volume {
         return if(voxelDimensions == null) {
-            val voxelDims = FloatArray(image.numDimensions())
-            for (d in voxelDims.indices) {
-                val inValue = image.axis(d).averageScale(0.0, 1.0)
-                if (image.axis(d).unit() == null) {
-                    voxelDims[d] = inValue.toFloat()
-                } else {
-                    val imageAxisUnit = image.axis(d).unit().replace("µ", "u")
-                    val sciviewAxisUnit = axis(d)!!.unit().replace("µ", "u")
-
-                    voxelDims[d] = unitService.value(inValue, imageAxisUnit, sciviewAxisUnit).toFloat()
-                }
-            }
+            val voxelDims = getSciviewScale(image)
             addVolume(image.imgPlus, image.name, voxelDims, block)
         } else {
             addVolume(image.imgPlus, image.name, voxelDimensions, block)
@@ -1395,18 +1455,16 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
     </T> */
     @JvmOverloads
     @Suppress("UNCHECKED_CAST")
-    fun <T : NumericType<T>> addVolume(sources: List<SourceAndConverter<T>>,
-                                       converterSetups: ArrayList<ConverterSetup>,
-                                       numTimepoints: Int,
-                                       name: String = "Volume",
-                                       vararg voxelDimensions: Float,
-                                       block: Volume.() -> Unit = {}): Volume {
+    fun <T : RealType<T>> addVolume(sources: List<SourceAndConverter<T>>,
+                                    converterSetups: ArrayList<ConverterSetup>,
+                                    numTimepoints: Int,
+                                    name: String = "Volume",
+                                    voxelDimensions: FloatArray,
+                                    block: Volume.() -> Unit = {},
+                                    colormapName: String = "Fire.lut"): Volume {
         var timepoints = numTimepoints
         var cacheControl: CacheControl? = null
 
-//        RandomAccessibleInterval<T> image =
-//                ((RandomAccessibleIntervalSource4D) sources.get(0).getSpimSource()).
-//                .getSource(0, 0);
         val image = sources[0].spimSource.getSource(0, 0)
         if (image is VolatileView<*, *>) {
             val viewData = (image as VolatileView<T, Volatile<T>>).volatileViewData
@@ -1427,13 +1485,26 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
         if (image.numDimensions() > 3) {
             timepoints = image.dimension(3).toInt()
         }
-        val ds = RAISource<T>(voxelType, sources, converterSetups, timepoints, cacheControl)
+
+        val ds = if(converterSetups != null) {
+            RAISource<T>(voxelType, sources, converterSetups, timepoints, cacheControl)
+        } else {
+            val cs = ArrayList<ConverterSetup>()
+            for ((setupId, source) in sources.withIndex()) {
+                cs.add(BigDataViewer.createConverterSetup(source, setupId))
+            }
+
+            RAISource<T>(voxelType, sources, cs, timepoints, cacheControl)
+        }
+
         val options = VolumeViewerOptions()
         val v: Volume = RAIVolume(ds, options, hub)
+        // Note we override scenery's default scale of mm
+        // v.pixelToWorldRatio = 0.1f
         v.name = name
         v.metadata["sources"] = sources
         v.metadata["VoxelDimensions"] = voxelDimensions
-        v.spatial().scale = Vector3f(1.0f, voxelDimensions[1]/voxelDimensions[0], voxelDimensions[2]/voxelDimensions[0]) * v.pixelToWorldRatio * 10.0f
+        v.spatial().scale = Vector3f(voxelDimensions[0], voxelDimensions[1], voxelDimensions[2]) * v.pixelToWorldRatio
         val tf = v.transferFunction
         val rampMin = 0f
         val rampMax = 0.1f
@@ -1443,6 +1514,10 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
         tf.addControlPoint(1.0f, rampMax)
         val bg = BoundingGrid()
         bg.node = v
+
+        // Set default colormap
+        v.metadata["sciview.colormapName"] = colormapName
+        v.colormap = Colormap.fromColorTable(getLUT(colormapName))
 
         imageToVolumeMap[image] = v
         return addNode(v, block = block)
@@ -1468,7 +1543,7 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
         for (source in sources) {
             converterSetups.add(BigDataViewer.createConverterSetup(source, setupId++))
         }
-        val v = addVolume(sources, converterSetups, numTimepoints, name, *voxelDimensions, block = block)
+        val v = addVolume(sources, converterSetups, numTimepoints, name, voxelDimensions, block = block)
         imageToVolumeMap[sources] = v
         return v
     }
@@ -1725,6 +1800,52 @@ fun deleteNode(node: Node?, activePublish: Boolean = true) {
 
     fun getAvailableServices() {
         println(scijavaContext!!.serviceIndex)
+    }
+
+    /**
+     * Return the color table corresponding to the [lutName]
+     * @param lutName a String represening an ImageJ style LUT name, like Fire.lut
+     * @return a [ColorTable] corresponding to the LUT or null if LUT not available
+     */
+    fun getLUT(lutName: String = "Fire.lut"): ColorTable {
+        try {
+            refreshLUTs()
+            var lutResult = availableLUTs[lutName]
+            return lutService.loadLUT(lutResult)
+        } catch (e: IOException) {
+            log.error("LUT $lutName not available")
+            e.printStackTrace()
+            throw e
+        }
+    }
+
+    /**
+     * Refresh the cache of available LUTs fetched from LutService
+     */
+    private fun refreshLUTs() {
+        if(availableLUTs.isEmpty()) {
+            availableLUTs.putAll(lutService.findLUTs().entries.sortedBy { it.key }.map { it.key to it.value })
+        }
+    }
+
+    /**
+     * Return a list of available LUTs/colormaps
+     * @return a list of LUT names
+     */
+    fun getAvailableLUTs(): List<String> {
+        refreshLUTs()
+        return availableLUTs.map {entry -> entry.key}
+    }
+
+    /**
+     * Return ProjectDirectories for sciview.
+     *
+     * Use this to find the location of cache, etc.
+     *
+     * @return a [ProjectDirectories] for sciview
+     */
+    fun getProjectDirectories(): ProjectDirectories {
+        return ProjectDirectories.from("sc", "iview", "sciview")
     }
 
     companion object {

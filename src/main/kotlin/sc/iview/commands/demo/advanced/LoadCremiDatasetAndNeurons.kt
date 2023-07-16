@@ -31,6 +31,7 @@ package sc.iview.commands.demo.advanced
 import bdv.util.DefaultInterpolators
 import bdv.viewer.Interpolation
 import ch.systemsx.cisd.hdf5.HDF5Factory
+import dev.dirs.ProjectDirectories
 import graphics.scenery.Origin
 import graphics.scenery.utils.extensions.xyz
 import graphics.scenery.volumes.Colormap
@@ -130,10 +131,16 @@ class LoadCremiDatasetAndNeurons : Command {
         }
 
         // val files = ui.chooseFiles(null, emptyList(), filter, FileWidget.OPEN_STYLE)
-        val file = File(System.getProperty("user.home") + "/.sciview/examples/sample_A_20160501.hdf")
+        var projDirs = sciview.getProjectDirectories()
+
+        val file = File(projDirs.cacheDir,"sample_A_20160501.hdf")
         if (file.exists() == false) {
             task.status = "Downloading dataset"
             log.info("Downloading dataset")
+            // ensure this exists projDirs.cacheDir
+            if (!File(projDirs.cacheDir).exists()) {
+                File(projDirs.cacheDir).mkdirs()
+            }
             copyURLToFile(URL("https://cremi.org/static/data/sample_A_20160501.hdf"), file)
         }
 
@@ -215,9 +222,10 @@ class LoadCremiDatasetAndNeurons : Command {
 
     fun readCremiHDF5(path: String, scale: Double = 1.0): NeuronsAndImage? {
         log.info("Reading cremi HDF5 from $path")
-        val hdf5Reader = HDF5Factory.openForReading(path)
-        val n5Reader: N5HDF5Reader
+
         try {
+            val hdf5Reader = HDF5Factory.openForReading(path)
+            val n5Reader: N5HDF5Reader
             n5Reader = N5HDF5Reader(hdf5Reader, *intArrayOf(128, 128, 128))
             val neuronIds: RandomAccessibleInterval<UnsignedLongType> = N5Utils.open(n5Reader,
                     "/volumes/labels/neuron_ids",
@@ -246,6 +254,9 @@ class LoadCremiDatasetAndNeurons : Command {
             }
         } catch (e: IOException) {
             log.error("Could not read Cremi HDF5 file from $path")
+            e.printStackTrace()
+        } catch (e: hdf.hdf5lib.exceptions.HDF5FileInterfaceException) {
+            log.error("Could not read Cremi HDF5 file from $path. It might be the wrong file or corrupted. Please delete the file and rerun.")
             e.printStackTrace()
         }
 

@@ -26,31 +26,27 @@
  * POSSIBILITY OF SUCH DAMAGE.
  * #L%
  */
-package sc.iview.commands.edit.add
+package sc.iview.commands.add
 
 import graphics.scenery.proteins.Protein
 import graphics.scenery.proteins.RibbonDiagram
 import org.joml.Vector3f
 import org.scijava.command.Command
 import org.scijava.command.DynamicCommand
-import org.scijava.command.InteractiveCommand
 import org.scijava.plugin.Menu
 import org.scijava.plugin.Parameter
 import org.scijava.plugin.Plugin
 import org.scijava.ui.UIService
-import org.scijava.widget.Button
-import org.scijava.widget.FileWidget
 import sc.iview.SciView
 import sc.iview.commands.MenuWeights
 import java.io.File
-import java.io.FileFilter
 
 /**
  * Command to add a box to the scene
  *
  * @author Kyle Harrington
  */
-@Plugin(type = Command::class, menuRoot = "SciView", menu = [Menu(label = "Edit", weight = MenuWeights.EDIT), Menu(label = "Add", weight = MenuWeights.EDIT_ADD), Menu(label = "Protein from files ...", weight = MenuWeights.EDIT_ADD_BOX)])
+@Plugin(type = Command::class, menuRoot = "SciView", menu = [Menu(label = "Add", weight = MenuWeights.ADD), Menu(label = "Protein from files ...", weight = MenuWeights.EDIT_ADD_PROTEIN_FILE)])
 class AddProteinFromFiles : DynamicCommand() {
 
     @Parameter
